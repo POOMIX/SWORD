@@ -1,0 +1,1 @@
+["dest_port", "duration", "duration_ms", "total_fwd_packets", "total_bwd_packets", "total_packets", "flow_packets_per_sec", "fwd_bwd_ratio", "pkt_ratio", "has_response", "flow_iat_mean", "is_long_connection", "log_duration", "pkts_per_duration", "acc_age", "n_flushes", "log_acc_age"]
