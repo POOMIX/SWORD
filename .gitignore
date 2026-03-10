@@ -13,3 +13,6 @@ __pycache__/
 # dataset
 *.csv
 *.pcap
+
+*.log
+model

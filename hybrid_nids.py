@@ -191,11 +191,11 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.model_selection import cross_val_score
 
-    logger.info(f"   [{label}] Training set: {len(X_tr):,} samples  "
+    print(f"[{label}] Training set: {len(X_tr):,} samples  "
                 f"(Attack={int(y_tr.sum()):,} / Benign={int((y_tr==0).sum()):,})")
 
     # ── Decision Tree — จำกัด depth และ min_samples ──────────
-    logger.info(f"  🌿 [{label}] Training Decision Tree...")
+    print(f"[{label}] Training Decision Tree...")
     dt_base = DecisionTreeClassifier(
         max_depth=6,           
         min_samples_leaf=20,    
@@ -206,11 +206,11 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     dt = CalibratedClassifierCV(dt_base, method="sigmoid", cv=5).fit(X_tr, y_tr)
     dt_pred = dt.predict(X_te)
     dt_cv = cross_val_score(dt_base, X_tr, y_tr, cv=5, scoring="f1", n_jobs=-1)
-    logger.info(f"   [{label}] DT | CV F1={dt_cv.mean():.4f} ±{dt_cv.std():.4f} | Test F1 below")
-    logger.info(f"\n{classification_report(y_te, dt_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
+    print(f"   [{label}] DT | CV F1={dt_cv.mean():.4f} ±{dt_cv.std():.4f} | Test F1 below")
+    print(f"\n{classification_report(y_te, dt_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
 
     # ── Random Forest ─────────────────────────────────────────
-    logger.info(f"  🌲 [{label}] Training Random Forest...")
+    print(f"[{label}] Training Random Forest...")
     rf_base = RandomForestClassifier(
         n_estimators=300,
         max_depth=15,           
@@ -223,11 +223,11 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     rf = CalibratedClassifierCV(rf_base, method="sigmoid", cv=5).fit(X_tr, y_tr)
     rf_pred = rf.predict(X_te)
     rf_cv = cross_val_score(rf_base, X_tr, y_tr, cv=5, scoring="f1", n_jobs=-1)
-    logger.info(f"   [{label}] RF | CV F1={rf_cv.mean():.4f} ±{rf_cv.std():.4f} | Test F1 below")
-    logger.info(f"\n{classification_report(y_te, rf_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
+    print(f"[{label}] RF | CV F1={rf_cv.mean():.4f} ±{rf_cv.std():.4f} | Test F1 below")
+    print(f"\n{classification_report(y_te, rf_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
 
     # ── XGBoost — เพิ่ม regularization ───────────────────────
-    logger.info(f"  ⚡ [{label}] Training XGBoost (GridSearch cv=5)...")
+    print(f"[{label}] Training XGBoost (GridSearch cv=5)...")
     xgb_base = XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",
@@ -243,9 +243,9 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     ).fit(X_tr, y_tr)
     xgb = grid.best_estimator_
     xgb_pred = xgb.predict(X_te)
-    logger.info(f"   [{label}] XGB | best_params={grid.best_params_} | "
+    print(f"   [{label}] XGB | best_params={grid.best_params_} | "
                 f"CV F1={grid.best_score_:.4f} | Test F1 below")
-    logger.info(f"\n{classification_report(y_te, xgb_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
+    print(f"\n{classification_report(y_te, xgb_pred, target_names=['Benign', label], zero_division=0, digits=4)}")
 
     # ── CV vs Test gap check ──────────────────────────────────
     from sklearn.metrics import f1_score
@@ -253,12 +253,12 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     test_f1_rf  = f1_score(y_te, rf_pred,  zero_division=0)
     test_f1_xgb = f1_score(y_te, xgb_pred, zero_division=0)
 
-    logger.info(f"  📊 [{label}] CV vs Test gap:")
-    logger.info(f"     DT  → CV={dt_cv.mean():.4f}  Test={test_f1_dt:.4f}  gap={abs(dt_cv.mean()-test_f1_dt):.4f}"
+    print(f"[{label}] CV vs Test gap:")
+    print(f"DT  → CV={dt_cv.mean():.4f}  Test={test_f1_dt:.4f}  gap={abs(dt_cv.mean()-test_f1_dt):.4f}"
                 + ("  overfit?" if abs(dt_cv.mean()-test_f1_dt) > 0.01 else " ✅"))
-    logger.info(f"     RF  → CV={rf_cv.mean():.4f}  Test={test_f1_rf:.4f}  gap={abs(rf_cv.mean()-test_f1_rf):.4f}"
+    print(f"     RF  → CV={rf_cv.mean():.4f}  Test={test_f1_rf:.4f}  gap={abs(rf_cv.mean()-test_f1_rf):.4f}"
                 + ("  overfit?" if abs(rf_cv.mean()-test_f1_rf) > 0.01 else " ✅"))
-    logger.info(f"     XGB → CV={grid.best_score_:.4f}  Test={test_f1_xgb:.4f}  gap={abs(grid.best_score_-test_f1_xgb):.4f}"
+    print(f"     XGB → CV={grid.best_score_:.4f}  Test={test_f1_xgb:.4f}  gap={abs(grid.best_score_-test_f1_xgb):.4f}"
                 + ("  overfit?" if abs(grid.best_score_-test_f1_xgb) > 0.01 else " ✅"))
 
     return dt, rf, xgb
@@ -279,13 +279,13 @@ def _auto_tune_threshold(dt, rf, xgb, X_val, y_val, label):
             best_t, best_f1 = t, f1
 
     thr_log = "  ".join([f"t={t:.2f}→F1={f:.3f}{'★' if t == best_t else ''}" for t, f in rows])
-    logger.info(f"  🎯 [{label}] Threshold search:\n     {thr_log}")
-    logger.info(f"  🏆 [{label}] Best threshold = {best_t:.2f}  (Ensemble F1 = {best_f1:.4f})")
+    print(f"[{label}] Threshold search:\n     {thr_log}")
+    print(f"[{label}] Best threshold = {best_t:.2f}  (Ensemble F1 = {best_f1:.4f})")
     return best_t
 
 def train_models(dataset_path: str, model_dir: str = "./model"):
     signal.signal(signal.SIGINT, lambda s, f: (
-        logger.info("\n🛑 Training interrupted by user (Ctrl+C)"),
+        print("\nTraining interrupted by user (Ctrl+C)"),
         exit(0)
     ))
 
@@ -296,12 +296,12 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
     }
 
     param_grid = {
-    "max_depth":     [4, 6, 9],
-    "n_estimators":  [100, 150, 200],
-    "learning_rate": [0.01, 0.05, 0.1],
-    "min_child_weight": [3, 5],    
-    "subsample":     [0.7, 0.8],   
-}
+        "max_depth":     [4, 6, 9],
+        "n_estimators":  [100, 150, 200],
+        "learning_rate": [0.01, 0.05, 0.1],
+        "min_child_weight": [3, 5],    
+        "subsample":     [0.7, 0.8],   
+    }
     attack_types = [("PortScan", "portscan"), ("DoS", "dos")]
     tuned_thresholds = {}
 
@@ -309,35 +309,35 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
         target_file = ATTACK_FILE_MAP.get(attack_label)
         full_path = os.path.join(dataset_path, target_file)
         if not os.path.exists(full_path):
-            logger.warning(f"⚠️  ไม่พบไฟล์ {target_file} — ข้าม {attack_label}")
+            print(f"Not found {target_file} — skip {attack_label}")
             continue
 
-        logger.info(f"\n{'='*60}")
-        logger.info(f"🚀 Task: {attack_label}  ←  {target_file}")
-        logger.info(f"{'='*60}")
+        print(f"\n{'='*60}")
+        print(f"Task: {attack_label}  ←  {target_file}")
+        print(f"{'='*60}")
 
         t0 = time.time()
         df_binary = load_and_preprocess(full_path)
         df_binary = df_binary[df_binary["Label"].isin(["Benign", attack_label])].copy()
 
         vc = df_binary["Label"].value_counts()
-        logger.info(f"  📊 Dataset after filter: {len(df_binary):,} rows")
+        print(f"Dataset after filter: {len(df_binary):,} rows")
         for cls, cnt in vc.items():
-            logger.info(f"     {cls:<12}: {cnt:,} ({cnt/len(df_binary)*100:.1f}%)")
+            print(f"     {cls:<12}: {cnt:,} ({cnt/len(df_binary)*100:.1f}%)")
 
         X_raw = df_binary[FEATURES].values
         y_raw = (df_binary["Label"] == attack_label).astype(int).values
         X_tr_raw, X_te_raw, y_tr, y_te = train_test_split(
             X_raw, y_raw, test_size=0.2, random_state=42, stratify=y_raw)
 
-        logger.info(f"  ✂️  Split → Train: {len(X_tr_raw):,}  Test: {len(X_te_raw):,}")
+        print(f"Split → Train: {len(X_tr_raw):,}  Test: {len(X_te_raw):,}")
 
         task_scaler = StandardScaler()
         X_tr_scaled = task_scaler.fit_transform(X_tr_raw)
         X_te_scaled  = task_scaler.transform(X_te_raw)
 
         X_tr_bal, y_tr_bal = balance_binary_arrays(X_tr_scaled, y_tr)
-        logger.info(f"  ⚖️  After balance → {len(X_tr_bal):,} "
+        print(f"After balance → {len(X_tr_bal):,} "
                     f"(Attack={int(y_tr_bal.sum()):,} / Benign={int((y_tr_bal==0).sum()):,})")
 
         dt, rf, xgb = _train_one_binary(X_tr_bal, X_te_scaled, y_tr_bal, y_te, attack_label, param_grid)
@@ -352,15 +352,15 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
         tuned_thresholds[attack_label] = _auto_tune_threshold(
             dt, rf, xgb, X_te_scaled, y_te, attack_label)
 
-        logger.info(f"  💾 Models saved → {sub_dir}")
-        logger.info(f"  ⏱️  {attack_label} total time: {time.time()-t0:.1f}s")
+        print(f"Models saved → {sub_dir}")
+        print(f"{attack_label} total time: {time.time()-t0:.1f}s")
 
     with open(os.path.join(model_dir, "features.json"), "w") as f: json.dump(FEATURES, f)
     with open(os.path.join(model_dir, "thresholds.json"), "w") as f: json.dump(tuned_thresholds, f, indent=2)
 
-    logger.info(f"\n{'='*60}")
-    logger.info(f"✅ Training complete | Thresholds: {tuned_thresholds}")
-    logger.info(f"{'='*60}\n")
+    print(f"\n{'='*60}")
+    print(f"Training complete | Thresholds: {tuned_thresholds}")
+    print(f"{'='*60}\n")
     return [a for a, _ in attack_types]
 
 # ═══════════════════════════════════════════════════════
@@ -461,7 +461,7 @@ class HybridNIDS:
         all_scores = res.get("all_scores", {})
 
         # ── Header ──────────────────────────────────────────────
-        logger.warning(
+        print(
             f"🚨 [{self.alert_count}] {res.get('src_ip')} -> "
             f"{res.get('dst_ip')}:{res.get('dst_port')} | "
             f"Class: {predicted}  Conf: {confidence:.3f}"
@@ -471,7 +471,7 @@ class HybridNIDS:
         for task_label, pm in all_per_model.items():
             ensemble = all_scores.get(task_label, 0.0)
             icon = "🔴" if task_label == "DoS" else "🟡"
-            logger.warning(
+            print(
                 f"   {icon} {task_label:<10} | "
                 f"DT={pm.get('dt', 0):.3f}  "
                 f"RF={pm.get('rf', 0):.3f}  "
@@ -480,7 +480,7 @@ class HybridNIDS:
             )
 
     def monitor_realtime(self, eve_path):
-        logger.info(f"📡 Monitoring: {eve_path}  (Ctrl+C to stop)")
+        print(f"📡 Monitoring: {eve_path}  (Ctrl+C to stop)")
         try:
             with open(eve_path, "r") as f:
                 f.seek(0, 2)
@@ -489,7 +489,7 @@ class HybridNIDS:
                     if not line: time.sleep(0.1); continue
                     self._process_line(line.strip())
         except KeyboardInterrupt:
-            logger.info(f"🛑 Stopped. Total alerts: {self.alert_count}")
+            print(f"🛑 Stopped. Total alerts: {self.alert_count}")
             os._exit(0)
 
     def _process_line(self, line):
