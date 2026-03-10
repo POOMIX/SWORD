@@ -14,6 +14,7 @@ class ServiceWhitelist:
         """Initialize the whitelist with common legitimate services"""
         # Well-known DNS servers
         self.dns_servers: List[str] = [
+            "10.8.8.8",     #MSU DNS
             "8.8.8.8",      # Google DNS
             "8.8.4.4",      # Google DNS
             "1.1.1.1",      # Cloudflare DNS
@@ -45,6 +46,11 @@ class ServiceWhitelist:
             "23.221.50.32": [80, 443],    # Akamai
             "104.16.0.0/12": [80, 443],   # Cloudflare range
             "151.101.0.0/16": [80, 443],  # Fastly range
+            "23.221.50.32":     [80, 443],
+            "104.16.0.0/12":    [80, 443],
+            "151.101.0.0/16":   [80, 443],
+            "185.125.188.0/22": [80, 443],  # Canonical range 1
+            "91.189.88.0/21":   [80, 443],  # Canonical range 2 ← เพิ่ม
         }
         
         # Other well-known services
@@ -52,6 +58,8 @@ class ServiceWhitelist:
             # Format: (ip, port): "Service Name"
             ("13.107.21.200", 443): "Microsoft Services",
             ("13.107.42.12", 443): "Microsoft Services",
+            ("185.125.190.18", 80):  "Ubuntu Update Server",  # เพิ่ม
+            ("185.125.190.18", 443): "Ubuntu Update Server",  # เพิ่ม
             # Add more as needed
         }
         
