@@ -124,6 +124,11 @@ class ServiceWhitelist:
         Returns:
             True if the connection is to a whitelisted service
         """
+         # Check IPv6 Multicast / Link-local
+        if ip_addr.startswith("ff0") or ip_addr.startswith("ff02") or ip_addr.startswith("fe80"):
+            logger.debug(f"Whitelisted IPv6 Multicast/Link-local: {ip_addr}:{port}")
+            return True
+
         
         # Check pfSense IP
         if ip_addr in self.pfsense_interfaces:

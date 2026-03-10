@@ -68,11 +68,25 @@ DEFAULT_THRESHOLD: float = 0.5
 # Feature Selection
 # ─────────────────────────────────────────────
 FEATURES = [
-    "dest_port", "duration", "duration_ms", "total_fwd_packets", 
-    "total_bwd_packets", "total_packets", "flow_packets_per_sec", 
-    "fwd_bwd_ratio", "pkt_ratio", "has_response", "flow_iat_mean",
-    "is_long_connection", "log_duration", "pkts_per_duration",
-    "acc_age", "n_flushes", "log_acc_age"
+    # Original Features
+    "dest_port", 
+    "duration", 
+    "total_fwd_packets", 
+    "total_bwd_packets", 
+    "total_packets", 
+    "flow_packets_per_sec",
+    # Derived Features
+    "duration_ms", 
+    "fwd_bwd_ratio", 
+    "pkt_ratio", 
+    "has_response", 
+    "flow_iat_mean",
+    "is_long_connection", 
+    "log_duration", 
+    "pkts_per_duration",
+    "acc_age", 
+    "n_flushes", 
+    "log_acc_age"
 ]
 
 CICIDS_COL_MAP = {
@@ -184,8 +198,8 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     logger.info(f"  🌿 [{label}] Training Decision Tree...")
     dt_base = DecisionTreeClassifier(
         max_depth=6,           
-        min_samples_leaf=20,    # ใหม่: ป้องกัน overfit
-        min_samples_split=50,   # ใหม่: ป้องกัน overfit
+        min_samples_leaf=20,    
+        min_samples_split=50,   
         random_state=42,
         class_weight="balanced"
     )
@@ -199,9 +213,9 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     logger.info(f"  🌲 [{label}] Training Random Forest...")
     rf_base = RandomForestClassifier(
         n_estimators=300,
-        max_depth=15,           # ลดจาก 25 → 15
-        min_samples_leaf=10,    # ใหม่
-        max_features="sqrt",    # ใหม่: สุ่ม feature แต่ละ split
+        max_depth=15,           
+        min_samples_leaf=10,    
+        max_features="sqrt",    
         random_state=42,
         class_weight="balanced",
         n_jobs=-1
@@ -218,11 +232,11 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
         objective="binary:logistic",
         eval_metric="logloss",
         random_state=42,
-        subsample=0.8,          # ใหม่: สุ่ม 80% ของข้อมูลแต่ละ tree
-        colsample_bytree=0.8,   # ใหม่: สุ่ม 80% ของ feature แต่ละ tree
-        reg_alpha=0.1,          # ใหม่: L1 regularization
-        reg_lambda=1.5,         # ใหม่: L2 regularization
-        min_child_weight=5,     # ใหม่: ป้องกัน split ที่มี sample น้อย
+        subsample=0.8,          
+        colsample_bytree=0.8,   
+        reg_alpha=0.1,          
+        reg_lambda=1.5,         
+        min_child_weight=5,     
     )
     grid = GridSearchCV(
         xgb_base, param_grid, cv=5, scoring="f1", n_jobs=-1, verbose=0
@@ -270,7 +284,6 @@ def _auto_tune_threshold(dt, rf, xgb, X_val, y_val, label):
     return best_t
 
 def train_models(dataset_path: str, model_dir: str = "./model"):
-    # ── Ctrl+C handler: ให้ exit สะอาดโดยไม่มี multiprocessing traceback ──
     signal.signal(signal.SIGINT, lambda s, f: (
         logger.info("\n🛑 Training interrupted by user (Ctrl+C)"),
         exit(0)
@@ -286,8 +299,8 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
     "max_depth":     [4, 6, 9],
     "n_estimators":  [100, 150, 200],
     "learning_rate": [0.01, 0.05, 0.1],
-    "min_child_weight": [3, 5],     # ใหม่
-    "subsample":     [0.7, 0.8],    # ใหม่
+    "min_child_weight": [3, 5],    
+    "subsample":     [0.7, 0.8],   
 }
     attack_types = [("PortScan", "portscan"), ("DoS", "dos")]
     tuned_thresholds = {}
