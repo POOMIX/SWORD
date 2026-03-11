@@ -199,9 +199,9 @@ def _train_one_binary(X_tr, X_te, y_tr, y_te, label, param_grid):
     # ── Decision Tree — จำกัด depth และ min_samples ──────────
     print(f"[{label}] Training Decision Tree...")
     dt_base = DecisionTreeClassifier(
-        max_depth=6,           
-        min_samples_leaf=20,    
-        min_samples_split=50,   
+        max_depth=5,           
+        min_samples_leaf=30,    
+        min_samples_split=60,   
         random_state=42,
         class_weight="balanced"
     )
