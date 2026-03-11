@@ -514,14 +514,42 @@ class HybridNIDS:
                 if self.whitelist.is_whitelisted(dst_ip, dst_port, proto):
                     # logger.debug(f"Skipping whitelisted traffic: {dst_ip}:{dst_port}")
                     return
-                agg = self._flow_tracker.update(raw.get("flow_id"), float(raw.get("flow",{}).get("age",0)), int(getattr(event,"spkts",0)), int(getattr(event,"dpkts",0)), int(getattr(event,"sbytes",0)), int(getattr(event,"dbytes",0)), raw.get("flow",{}).get("reason",""), time.time(), int(getattr(event,"dport",0)))
+                agg = self._flow_tracker.update(
+                    raw.get("flow_id"), 
+                    float(raw.get("flow",{}).get("age",0)), 
+                    int(getattr(event,"spkts",0)), 
+                    int(getattr(event,"dpkts",0)), 
+                    int(getattr(event,"sbytes",0)), 
+                    int(getattr(event,"dbytes",0)), 
+                    raw.get("flow",{}).get("reason",""), 
+                    time.time(), 
+                    int(getattr(event,"dport",0))
+                )
                 if agg:
                     event.dur, event.spkts, event.dpkts = agg["accumulated_age"], agg["spkts"], agg["dpkts"]
                     self._analyze_event_direct(event)
         except: pass
 
     def _analyze_event_direct(self, event):
-        row = {"dest_port": int(getattr(event,"dport",0)), "duration": event.dur*1e6, "duration_ms": event.dur*1000, "total_fwd_packets": event.spkts, "total_bwd_packets": event.dpkts, "total_packets": event.spkts+event.dpkts, "flow_packets_per_sec": (event.spkts+event.dpkts)/max(event.dur, 1e-6), "fwd_bwd_ratio": event.spkts/(event.dpkts+1), "pkt_ratio": event.dpkts/max(event.spkts,1), "has_response": float(event.dpkts>0), "flow_iat_mean": (event.dur*1e6)/max(event.spkts+event.dpkts-1, 1), "is_long_connection": float(event.dur>1), "log_duration": np.log10(max(event.dur*1e6,1)), "pkts_per_duration": (event.spkts+event.dpkts)/max(np.log10(max(event.dur*1e6,1)),1), "acc_age": event.dur, "n_flushes": np.ceil(event.dur/30), "log_acc_age": np.log10(event.dur+1)}
+        row = {
+            "dest_port": int(getattr(event,"dport",0)), 
+            "duration": event.dur*1e6, 
+            "duration_ms": event.dur*1000, 
+            "total_fwd_packets": event.spkts, 
+            "total_bwd_packets": event.dpkts, 
+            "total_packets": event.spkts+event.dpkts, 
+            "flow_packets_per_sec": (event.spkts+event.dpkts)/max(event.dur, 1e-6), 
+            "fwd_bwd_ratio": event.spkts/(event.dpkts+1), 
+            "pkt_ratio": event.dpkts/max(event.spkts,1), 
+            "has_response": float(event.dpkts>0), 
+            "flow_iat_mean": (event.dur*1e6)/max(event.spkts+event.dpkts-1, 1), 
+            "is_long_connection": float(event.dur>1), 
+            "log_duration": np.log10(max(event.dur*1e6,1)), 
+            "pkts_per_duration": (event.spkts+event.dpkts)/max(np.log10(max(event.dur*1e6,1)),1), 
+            "acc_age": event.dur, 
+            "n_flushes": np.ceil(event.dur/30), 
+            "log_acc_age": np.log10(event.dur+1)
+        }
         res = self.predict(pd.DataFrame([row]))
         if res["is_attack"]:
             res.update({"src_ip": getattr(event,"saddr",""), "dst_ip": getattr(event,"daddr",""), "dst_port": getattr(event,"dport","")})
