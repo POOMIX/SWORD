@@ -44,7 +44,6 @@ LABEL_MAP = {
     "DoS GoldenEye": "DoS",
     "DoS slowloris": "DoS",
     "DoS Slowhttptest": "DoS",
-    "DDoS": "DoS",
     "PortScan": "PortScan",
     "Port Scan": "PortScan",
 }
