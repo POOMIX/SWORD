@@ -98,6 +98,8 @@ CICIDS_COL_MAP = {
     "Label": "Label",
 }
 
+ML_LOG_DIR = "/var/log/sword_detection"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -479,6 +481,17 @@ class HybridNIDS:
                 f"→ Ensemble={ensemble:.3f}"
             )
 
+        # write to log file
+        with open(Path(ML_LOG_DIR, "ml_log.json"), "a") as f:
+            log_json = json.dumps({
+                "src_ip": res.get("src_ip"),
+                "dest_ip": res.get("dst_ip"),
+                "dest_port": res.get("dst_port"),
+                "confidence": f"{confidence:.3f}",
+                "predicted_attack": predicted
+            })
+            f.write(log_json + "\n")
+
     def monitor_realtime(self, eve_path):
         print(f"📡 Monitoring: {eve_path}  (Ctrl+C to stop)")
         try:
@@ -527,7 +540,10 @@ def main():
     args = parser.parse_args()
 
     if args.train: train_models(args.train, args.model_dir)
-    elif args.realtime: HybridNIDS(model_dir=args.model_dir).monitor_realtime(args.realtime)
+    elif args.realtime: 
+        # Create Log dir
+        Path("/var/log/sword_detection").mkdir(parents=True, exist_ok=True)
+        HybridNIDS(model_dir=args.model_dir).monitor_realtime(args.realtime)
 
 if __name__ == "__main__": main()
 
