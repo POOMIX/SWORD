@@ -19,7 +19,6 @@ import logging
 import argparse
 import pickle
 from pathlib import Path
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -27,15 +26,12 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report
 from xgboost import XGBClassifier
 from dotenv import load_dotenv
 from utils.service_whitelist import ServiceWhitelist
 from utils.adaptive_flow_features import AdaptiveFlowFeatureExtractor
-from utils.session_manager import SessionManager
-from utils.flow_finalizer import FlowFinalizer
 from suricata.suricata_parser import SuricataParser
-from telegram_module.telegram_alert import TelegramAlerter as TelegramAlert
 
 load_dotenv()
 
@@ -402,7 +398,7 @@ class HybridNIDS:
     def __init__(self, model_dir="./model", use_telegram=False, threshold=DEFAULT_THRESHOLD):
         self.model_dir, self.use_telegram, self.threshold = model_dir, use_telegram, threshold
         self._load_models()
-        self.parser, self.session_mgr, self._flow_tracker = SuricataParser(), SessionManager(), FlowTracker()
+        self.parser, self._flow_tracker = SuricataParser(), FlowTracker()
         self.extractor = AdaptiveFlowFeatureExtractor(selected_features=self.features)
         self.alert_count, self._alert_cache = 0, {}
         self.whitelist = ServiceWhitelist()
