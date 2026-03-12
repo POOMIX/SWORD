@@ -383,15 +383,10 @@ class FlowTracker:
         f["spkts"] += spkts; f["dpkts"] += dpkts
         f["sbytes"] += sbytes; f["dbytes"] += dbytes
         f["last_seen"] = now
-
-        WEB_PORTS = {80, 443, 8080, 8443, 8000, 8888}
-        is_ps = (reason == "timeout" and f["n_flushes"] == 1 and age == 0 and (f["spkts"]+f["dpkts"]) <= 4 and dest_port not in WEB_PORTS)
-        is_dos = (dest_port in WEB_PORTS and f["n_flushes"] == 1 and f["spkts"] >= 3 and f["dpkts"] == 0 and age > 0)
-
-        if reason in ("closed", "forced") or f["accumulated_age"] >= self.FORCE_CLASSIFY_AGE or is_ps or is_dos:
+        # ใหม่ — ตัด is_ps และ is_dos ออก ต้องรอ 10 วิ
+        if reason in ("closed", "forced") or f["accumulated_age"] >= self.FORCE_CLASSIFY_AGE:
             f["classified"] = True
             return dict(f)
-        return None
 
 class HybridNIDS:
     def __init__(self, model_dir="./model", use_telegram=False, threshold=DEFAULT_THRESHOLD):
