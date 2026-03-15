@@ -489,16 +489,26 @@ class HybridNIDS:
 
     def monitor_realtime(self, eve_path):
         print(f"📡 Monitoring: {eve_path}  (Ctrl+C to stop)")
+        self._running = True
+ 
+        def _stop(signum, frame):
+            self._running = False
+ 
+        signal.signal(signal.SIGINT, _stop)
+        signal.signal(signal.SIGTERM, _stop)
+ 
         try:
             with open(eve_path, "r") as f:
                 f.seek(0, 2)
-                while True:
+                while self._running:
                     line = f.readline()
-                    if not line: time.sleep(0.1); continue
+                    if not line:
+                        time.sleep(0.1)
+                        continue
                     self._process_line(line.strip())
-        except KeyboardInterrupt:
+        finally:
             print(f"🛑 Stopped. Total alerts: {self.alert_count}")
-            os._exit(0)
+            
 
     def _process_line(self, line):
         try:
