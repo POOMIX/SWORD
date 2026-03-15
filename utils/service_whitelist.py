@@ -15,6 +15,7 @@ class ServiceWhitelist:
         # Well-known DNS servers
         self.dns_servers: List[str] = [
             "10.8.8.8",     #MSU DNS
+            "10.8.8.13",    #MSU DNS
             "8.8.8.8",      # Google DNS
             "8.8.4.4",      # Google DNS
             "1.1.1.1",      # Cloudflare DNS
