@@ -29,9 +29,6 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report
 from xgboost import XGBClassifier
 from dotenv import load_dotenv
-from utils.service_whitelist import ServiceWhitelist
-from utils.adaptive_flow_features import AdaptiveFlowFeatureExtractor
-from suricata.suricata_parser import SuricataParser
 
 load_dotenv()
 
@@ -360,47 +357,24 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
     print(f"{'='*60}\n")
     return [a for a, _ in attack_types]
 
-# ═══════════════════════════════════════════════════════
-#  FLOW TRACKER & INFERENCE
-# ═══════════════════════════════════════════════════════
-
-class FlowTracker:
-    FORCE_CLASSIFY_AGE: float = 10.0
-    MAX_FLOWS: int = 50_000
-    FLOW_TTL: float = 300.0
-
-    def __init__(self): self._flows = {}
-    
-    def update(self, flow_id, age, spkts, dpkts, sbytes, dbytes, reason, now, dest_port=0):
-        fid = str(flow_id)
-        if fid not in self._flows:
-            self._flows[fid] = {"accumulated_age": 0.0, "n_flushes": 0, "spkts": 0, "dpkts": 0, "sbytes": 0, "dbytes": 0, "last_seen": now, "classified": False}
-        
-        f = self._flows[fid]
-        if f["classified"]: return None
-        f["accumulated_age"] += age
-        f["n_flushes"] += 1
-        f["spkts"] += spkts; f["dpkts"] += dpkts
-        f["sbytes"] += sbytes; f["dbytes"] += dbytes
-        f["last_seen"] = now
-
-        WEB_PORTS = {80, 443, 8080, 8443, 8000, 8888}
-        is_ps = (reason == "timeout" and f["n_flushes"] == 1 and age == 0 and (f["spkts"]+f["dpkts"]) <= 4 and dest_port not in WEB_PORTS)
-        is_dos = (dest_port in WEB_PORTS and f["n_flushes"] == 1 and f["spkts"] >= 3 and f["dpkts"] == 0 and age > 0)
-
-        if reason in ("closed", "forced") or f["accumulated_age"] >= self.FORCE_CLASSIFY_AGE or is_ps or is_dos:
-            f["classified"] = True
-            return dict(f)
-        return None
-
 class HybridNIDS:
     def __init__(self, model_dir="./model", use_telegram=False, threshold=DEFAULT_THRESHOLD):
         self.model_dir, self.use_telegram, self.threshold = model_dir, use_telegram, threshold
         self._load_models()
-        self.parser, self._flow_tracker = SuricataParser(), FlowTracker()
-        self.extractor = AdaptiveFlowFeatureExtractor(selected_features=self.features)
         self.alert_count, self._alert_cache = 0, {}
-        self.whitelist = ServiceWhitelist()
+        self.local_ips = self._get_local_ips()
+
+    def _get_local_ips(self) -> set:
+        import socket
+        ips = {"127.0.0.1", "::1"}
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None):
+                ips.add(info[4][0].split("%")[0])
+        except Exception:
+            pass
+        logger.info(f"Local IPs (will be ignored): {ips}")
+        return ips
+
     def _load_models(self):
         md = self.model_dir
         self.features = json.load(open(os.path.join(md, "features.json")))
@@ -490,13 +464,13 @@ class HybridNIDS:
     def monitor_realtime(self, eve_path):
         print(f"📡 Monitoring: {eve_path}  (Ctrl+C to stop)")
         self._running = True
- 
+
         def _stop(signum, frame):
             self._running = False
- 
+
         signal.signal(signal.SIGINT, _stop)
         signal.signal(signal.SIGTERM, _stop)
- 
+
         try:
             with open(eve_path, "r") as f:
                 f.seek(0, 2)
@@ -513,55 +487,59 @@ class HybridNIDS:
     def _process_line(self, line):
         try:
             raw = json.loads(line)
-            if raw.get("event_type") == "alert": self._handle_suricata_alert(raw); return
-            event = self.parser.process_line(line)
-            if event and (hasattr(event, "flow_source") or getattr(event, "type_", "") == "conn"):
-                dst_ip = getattr(event, "daddr", "")
-                dst_port = int(getattr(event, "dport", 0))
-                proto = getattr(event, "proto", "").upper()
-                # ── จุดสำคัญ: เช็ค Whitelist ก่อนทำอย่างอื่น ──
-                if self.whitelist.is_whitelisted(dst_ip, dst_port, proto):
-                    # logger.debug(f"Skipping whitelisted traffic: {dst_ip}:{dst_port}")
-                    return
-                agg = self._flow_tracker.update(
-                    raw.get("flow_id"), 
-                    float(raw.get("flow",{}).get("age",0)), 
-                    int(getattr(event,"spkts",0)), 
-                    int(getattr(event,"dpkts",0)), 
-                    int(getattr(event,"sbytes",0)), 
-                    int(getattr(event,"dbytes",0)), 
-                    raw.get("flow",{}).get("reason",""), 
-                    time.time(), 
-                    int(getattr(event,"dport",0))
-                )
-                if agg:
-                    event.dur, event.spkts, event.dpkts = agg["accumulated_age"], agg["spkts"], agg["dpkts"]
-                    self._analyze_event_direct(event)
-        except: pass
+            event_type = raw.get("event_type")
 
-    def _analyze_event_direct(self, event):
+            if event_type == "alert":
+                self._handle_suricata_alert(raw)
+                return
+
+            if event_type == "flow":
+                src_ip = raw.get("src_ip", "")
+                # ── กรอง traffic ของเครื่องตัวเอง ──
+                if src_ip in self.local_ips:
+                    return
+                self._analyze_flow(raw)
+        except:
+            pass
+
+    def _analyze_flow(self, raw):
+        flow     = raw.get("flow", {})
+        dur_s    = float(flow.get("age", 0))
+        spkts    = int(flow.get("pkts_toserver", 0))
+        dpkts    = int(flow.get("pkts_toclient", 0))
+        dst_port = int(raw.get("dest_port", 0))
+        total    = spkts + dpkts
+
+        dur_us = dur_s * 1e6
+        log_dur = np.log10(max(dur_us, 1))
+
         row = {
-            "dest_port": int(getattr(event,"dport",0)), 
-            "duration": event.dur*1e6, 
-            "duration_ms": event.dur*1000, 
-            "total_fwd_packets": event.spkts, 
-            "total_bwd_packets": event.dpkts, 
-            "total_packets": event.spkts+event.dpkts, 
-            "flow_packets_per_sec": (event.spkts+event.dpkts)/max(event.dur, 1e-6), 
-            "fwd_bwd_ratio": event.spkts/(event.dpkts+1), 
-            "pkt_ratio": event.dpkts/max(event.spkts,1), 
-            "has_response": float(event.dpkts>0), 
-            "flow_iat_mean": (event.dur*1e6)/max(event.spkts+event.dpkts-1, 1), 
-            "is_long_connection": float(event.dur>1), 
-            "log_duration": np.log10(max(event.dur*1e6,1)), 
-            "pkts_per_duration": (event.spkts+event.dpkts)/max(np.log10(max(event.dur*1e6,1)),1), 
-            "acc_age": event.dur, 
-            "n_flushes": np.ceil(event.dur/30), 
-            "log_acc_age": np.log10(event.dur+1)
+            "dest_port":          dst_port,
+            "duration":           dur_us,
+            "duration_ms":        dur_s * 1000,
+            "total_fwd_packets":  spkts,
+            "total_bwd_packets":  dpkts,
+            "total_packets":      total,
+            "flow_packets_per_sec": total / max(dur_s, 1e-6),
+            "fwd_bwd_ratio":      spkts / (dpkts + 1),
+            "pkt_ratio":          dpkts / max(spkts, 1),
+            "has_response":       float(dpkts > 0),
+            "flow_iat_mean":      dur_us / max(total - 1, 1),
+            "is_long_connection": float(dur_s > 1),
+            "log_duration":       log_dur,
+            "pkts_per_duration":  total / max(log_dur, 1),
+            "acc_age":            dur_s,
+            "n_flushes":          np.ceil(dur_s / 30),
+            "log_acc_age":        np.log10(dur_s + 1),
         }
+
         res = self.predict(pd.DataFrame([row]))
         if res["is_attack"]:
-            res.update({"src_ip": getattr(event,"saddr",""), "dst_ip": getattr(event,"daddr",""), "dst_port": getattr(event,"dport","")})
+            res.update({
+                "src_ip":   raw.get("src_ip", ""),
+                "dst_ip":   raw.get("dest_ip", ""),
+                "dst_port": dst_port,
+            })
             self.handle_alert(res)
 
 def main():
@@ -579,4 +557,3 @@ def main():
         HybridNIDS(model_dir=args.model_dir).monitor_realtime(args.realtime)
 
 if __name__ == "__main__": main()
-
