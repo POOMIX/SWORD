@@ -11,15 +11,17 @@ import pandas as pd
 logger = logging.getLogger("hybrid-nids")
 
 FEATURES = [
-    "dest_port",
-    "duration",
-    "total_fwd_packets",
-    "total_bwd_packets",
-    "total_fwd_bytes",
-    "total_bwd_bytes",
-    "flow_bytes_per_sec",
-    "flow_packets_per_sec",
-    "down_up_ratio",
+    "dest_port", "duration", "total_fwd_packets", "total_bwd_packets",
+    "total_packets", "flow_packets_per_sec",
+    "down_up_ratio", "fwd_bytes_per_pkt", "bwd_bytes_per_pkt",
+    "bytes_ratio", "pkt_size_ratio", "flow_bytes_per_pkt",
+    "tcp_syn", "tcp_rst", "tcp_ack",
+    "duration_ms", "fwd_bwd_ratio", "pkt_ratio", "has_response",
+    "flow_iat_mean", "is_long_connection", "log_duration",
+    "pkts_per_duration", "acc_age", "n_flushes", "log_acc_age",
+    "http_request_count", "http_method_count", "http_status_4xx_ratio",
+    "http_status_5xx_ratio", "http_uri_len_avg", "http_uri_len_max",
+    "http_param_count", "has_suspicious_chars",
 ]
 
 

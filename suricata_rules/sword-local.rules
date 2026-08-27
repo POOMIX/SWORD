@@ -1,0 +1,21 @@
+# sword-local.rules — custom Suricata rule สำหรับ hybrid_nids.py v5.10+
+#
+# ไม่ใช่ signature โจมตีจริง — rule นี้ยิง alert บน "ทุก POST request"
+# เพื่อดึง POST body มาแนบกับ eve.json alert event เท่านั้น (ผ่าน
+# http-body-printable ที่ตั้งใน suricata.yaml ใต้ eve-log types: alert)
+# เพราะ event_type=="http" ปกติของ Suricata ไม่มีช่องให้ body เลย ไม่ว่า
+# จะตั้ง request-body-limit สูงแค่ไหนก็ตาม (ดู setup_suricata.md หัวข้อ
+# POST body สำหรับรายละเอียดเต็ม)
+#
+# hybrid_nids.py (_handle_suricata_alert -> _handle_body_capture_alert)
+# ดัก sid นี้ไว้เป็นกรณีพิเศษ "ไม่" ยิง alert ทันทีเหมือน Suricata alert
+# ทั่วไป แต่เอา body ไปวิ่งผ่าน signature override + payload ML ก่อน
+# ถึงจะยิงจริงถ้าเจอ payload — ดังนั้น POST ปกติ (login ทั่วไป ฯลฯ) จะ
+# ไม่ถูกแจ้งเตือน มีแค่ overhead เล็กน้อยจากการยิง alert event เพิ่ม 1
+# อันต่อ POST request 1 ครั้งเท่านั้น
+#
+# sid=9000001 ต้องตรงกับ SWORD_BODY_CAPTURE_SID ใน hybrid_nids.py เป๊ะ
+# (ใช้ private/local SID range ตามธรรมเนียม Suricata: >1,000,000 กันชน
+# กับ rule จริงที่โหลดจาก suricata-update ซึ่งใช้ช่วง SID ต่ำกว่ามาก)
+
+alert http any any -> $HOME_NET any (msg:"SWORD LOCAL - POST body capture (not an attack, feeds payload ML)"; flow:established,to_server; http.method; content:"POST"; classtype:not-suspicious; sid:9000001; rev:1;)

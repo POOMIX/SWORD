@@ -10,3 +10,5 @@ aiohttp==3.10.3
 python-dotenv==1.0.0
 imbalanced-learn==0.13.0
 tqdm==4.67.1
+telethon==1.36.0
+python-dateutil==2.9.0.post0

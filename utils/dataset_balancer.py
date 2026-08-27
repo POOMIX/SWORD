@@ -45,13 +45,25 @@ LABEL_MAP = {
     "DoS Slowhttptest": "DoS",
     "DDoS":             "DoS",
 
-    # PortScan — CSV ใช้ชื่อนี้ (ตรวจสอบแล้วจาก check_labels.py)
+    # PortScan
     "PortScan":         "PortScan",
-    "Port Scan":        "PortScan",   # กันเผื่อ variant
+    "Port Scan":        "PortScan",
+
+    # Web Attacks (CICIDS2017)
+    "Web Attack – Brute Force":       "WebAttack",
+    "Web Attack – XSS":               "WebAttack",
+    "Web Attack – Sql Injection":     "WebAttack",
+    "Web Attack – SQL Injection":     "WebAttack",
+    "Web Attack – XSS + SQL Injection": "WebAttack",
+
+    # Web Attacks (CICIDS2018)
+    "Brute Force -Web":  "WebAttack",
+    "Brute Force -XSS":  "WebAttack",
+    "SQL Injection":     "WebAttack",
 }
 
-# class ที่ต้องการเท่านั้น  (ตัวที่ไม่อยู่ใน set นี้จะถูก drop)
-TARGET_CLASSES = {"Benign", "DoS", "PortScan"}
+# class ที่ต้องการเท่านั้น
+TARGET_CLASSES = {"Benign", "DoS", "PortScan", "WebAttack"}
 
 # ─────────────────────────────────────────────
 # Network Constants (documented, not arbitrary)
@@ -74,23 +86,45 @@ XGB_WEIGHT: float = 0.50
 # Feature ที่ใช้ train (ต้องตรงกับ Suricata extractor)
 # ─────────────────────────────────────────────
 FEATURES = [
-    # Flow-level features — ทั้งหมดนี้ Suricata flow event ให้ได้จริง
-    "dest_port",              # port ปลายทาง
-    "duration",               # ระยะเวลา flow (microseconds)
-    "total_fwd_packets",      # packets ขาไป
-    "total_bwd_packets",      # packets ขากลับ
-    "flow_packets_per_sec",   # packet rate
-    "down_up_ratio",          # bwd/fwd bytes ratio
-    # Engineered features — ratio-based ไม่พึ่ง absolute bytes
-    # จึง robust ต่อ OS/kernel ที่ต่างกัน (TCP Options ต่างกัน)
-    "total_packets",          # fwd+bwd packets รวม
-    "fwd_bwd_ratio",          # fwd_pkts/(bwd_pkts+1)
-    "duration_ms",            # duration เป็น ms
-    "fwd_bytes_per_pkt",      # bytes ต่อ packet ขาไป  ← แทน absolute bytes
-    "bwd_bytes_per_pkt",      # bytes ต่อ packet ขากลับ ← แทน absolute bytes
-    "bytes_ratio",            # fwd_bytes_per_pkt / (bwd_bytes_per_pkt+1)
-    "pkt_size_ratio",         # avg_fwd_size / avg_bwd_size
-    "flow_bytes_per_pkt",     # total bytes / total packets
+    # ── Flow-level features ────────────────────────────────────────
+    "dest_port",
+    "duration",
+    "total_fwd_packets",
+    "total_bwd_packets",
+    "total_packets",
+    "flow_packets_per_sec",
+    # ── Bytes ratio features ───────────────────────────────────────
+    "down_up_ratio",
+    "fwd_bytes_per_pkt",
+    "bwd_bytes_per_pkt",
+    "bytes_ratio",
+    "pkt_size_ratio",
+    "flow_bytes_per_pkt",
+    # ── TCP flag features ──────────────────────────────────────────
+    "tcp_syn",
+    "tcp_rst",
+    "tcp_ack",
+    # ── Derived / engineered features ──────────────────────────────
+    "duration_ms",
+    "fwd_bwd_ratio",
+    "pkt_ratio",
+    "has_response",
+    "flow_iat_mean",
+    "is_long_connection",
+    "log_duration",
+    "pkts_per_duration",
+    "acc_age",
+    "n_flushes",
+    "log_acc_age",
+    # ── HTTP / Web Attack features ────────────────────────────────
+    "http_request_count",
+    "http_method_count",
+    "http_status_4xx_ratio",
+    "http_status_5xx_ratio",
+    "http_uri_len_avg",
+    "http_uri_len_max",
+    "http_param_count",
+    "has_suspicious_chars",
 ]
 
 # ─────────────────────────────────────────────
@@ -309,7 +343,7 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
         "learning_rate": [0.05, 0.1],
     }
 
-    attack_types = [("PortScan", "portscan"), ("DoS", "dos")]
+    attack_types = [("PortScan", "portscan"), ("DoS", "dos"), ("WebAttack", "webattack")]
 
     for attack_label, attack_dir in attack_types:
         logger.info(f"\n{'='*50}\nTraining Benign vs {attack_label}...")
@@ -342,7 +376,7 @@ def train_models(dataset_path: str, model_dir: str = "./model"):
     with open(os.path.join(model_dir, "features.json"), "w") as f:
         json.dump(FEATURES, f)
 
-    logger.info(f"\n✅ OvR Training เสร็จ | models: {model_dir}/portscan/ และ {model_dir}/dos/")
+    logger.info(f"\n✅ OvR Training เสร็จ | models: portscan/, dos/, webattack/")
     return [a for a, _ in attack_types]
 
 
@@ -402,27 +436,32 @@ class HybridNIDS:
 
         # OvR: โหลด model แยกสำหรับแต่ละ attack type
         self.models_ovr = {}
-        for attack in ["portscan", "dos"]:
+        for attack in ["portscan", "dos", "webattack"]:
             sub = os.path.join(md, attack)
+            if not os.path.exists(sub):
+                logger.warning(f"ไม่พบ model directory: {sub} — ข้าม {attack}")
+                continue
+            lbl = {"portscan": "PortScan", "dos": "DoS", "webattack": "WebAttack"}[attack]
             self.models_ovr[attack] = {
                 "dt":  _load(os.path.join(sub, "dt_model.pkl")),
                 "rf":  _load(os.path.join(sub, "rf_model.pkl")),
                 "xgb": _load(os.path.join(sub, "xgb_model.pkl")),
-                "label": "PortScan" if attack == "portscan" else "DoS",
+                "label": lbl,
             }
 
-        logger.info(f"โหลด OvR models สำเร็จ | PortScan + DoS binary classifiers")
+        logger.info(f"โหลด OvR models สำเร็จ | {list(self.models_ovr.keys())}")
 
     # ── ML Prediction (multiclass) ────────────────────
 
     def predict(self, features: pd.DataFrame) -> dict:
         """
-        OvR Binary Prediction:
+        OvR Binary Prediction พร้อม Softmax + Secondary Rejection:
         - Benign vs PortScan → P(PortScan)
         - Benign vs DoS      → P(DoS)
-        เลือก class ที่ combined probability สูงที่สุด ถ้าเกิน THRESHOLD=0.5
+        - Benign vs WebAttack → P(WebAttack)
         """
         THRESHOLD = 0.5
+        SECONDARY_REJECTION_GAP = 0.15
         try:
             X = features.reindex(columns=self.features, fill_value=0).values
             X_scaled = self.scaler.transform(X)
@@ -447,11 +486,26 @@ class HybridNIDS:
                     "xgb": label if xgb_p >= 0.5 else "Benign",
                 }
 
-            # เลือก attack ที่ score สูงสุด
-            best_label = max(scores, key=scores.get)
-            best_score = scores[best_label]
+            if not scores:
+                return {"predicted_class": "Benign", "confidence": 1.0, "is_attack": False,
+                        "proba_per_class": {}, "model_votes": {}, "model_conf": {}}
 
-            if best_score >= THRESHOLD:
+            # ── Softmax normalization ──────────────────────────────────
+            labels = list(scores.keys())
+            raw = np.array([scores[l] for l in labels])
+            exp_raw = np.exp(raw - np.max(raw))
+            softmax_scores = exp_raw / exp_raw.sum()
+            normed = {l: float(softmax_scores[i]) for i, l in enumerate(labels)}
+
+            best_label = max(normed, key=normed.get)
+            best_score = normed[best_label]
+
+            # ── Secondary rejection: Best vs Second-Best gap ───────────
+            sorted_scores = sorted(normed.values(), reverse=True)
+            second_best = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
+            gap_ok = (best_score - second_best) >= SECONDARY_REJECTION_GAP
+
+            if best_score >= THRESHOLD and gap_ok:
                 pred_class  = best_label
                 is_attack   = True
                 confidence  = best_score
@@ -468,9 +522,10 @@ class HybridNIDS:
                 "predicted_class": pred_class,
                 "confidence":      confidence,
                 "is_attack":       is_attack,
-                "proba_per_class": {**scores, "Benign": 1.0 - best_score},
+                "proba_per_class": {**normed, "Benign": 1.0 - best_score},
                 "model_votes":     model_votes,
                 "model_conf":      model_conf,
+                "raw_scores":      scores,
             }
 
         except Exception as e:
